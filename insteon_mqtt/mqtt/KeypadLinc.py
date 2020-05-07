@@ -65,6 +65,11 @@ class KeypadLinc:
                 payload='{ "cmd" : "{{json.state.lower()}}", '
                         '"level" : {{json.brightness}} }')
 
+        # Beep command template.
+        self.msg_beep = MsgTemplate(
+            topic='insteon/{{address}}/beep',
+            payload='{ "cmd" : "{{value.lower()}}" }')
+
         # Connect the signals from the insteon device so we get notified of
         # changes.
         device.signal_level_changed.connect(self._insteon_level_changed)
@@ -150,6 +155,12 @@ class KeypadLinc:
             handler = functools.partial(self._input_scene, group=group)
             topic = self.msg_btn_scene.render_topic(data)
             link.subscribe(topic, qos, handler)
+
+        # beep does not have any special arguments, still use template for address
+        data  = self.template_data()
+        topic = self.msg_beep.render_topic(data)
+        handler = functools.partial(self._beep)  # create callback handler
+        link.subscribe(topic, qos, handler)      # subscribe to topic
 
     #-----------------------------------------------------------------------
     def unsubscribe(self, link):
@@ -402,3 +413,28 @@ class KeypadLinc:
             LOG.exception("Invalid KeypadLinc command: %s", data)
 
     #-----------------------------------------------------------------------
+    def _beep(self, client, data, message):
+        """Handle beep topic
+
+        This is called when we receive a message on the beep MQTT
+        topic subscription.  Parse the message and pass the command to the
+        Insteon device.
+
+        Args:
+          client (paho.Client):  The paho mqtt client (self.link).
+          data:  Optional user data (unused).
+          message:  MQTT message - has attrs: topic, payload, qos, retain.
+        """
+        # Parse the input MQTT message.
+        data = self.msg_beep.to_json(message.payload)
+        if not data:
+            return
+
+        LOG.info("KeypadLinc beep command: %s", data)
+        try:
+            # extract reason
+            reason = data.get("reason", "")
+            self.device.beep(reason=reason)
+        except:
+            LOG.exception("Invalid KeypadLinc command: %s", data)
+
