@@ -314,4 +314,15 @@ def import_scenes(args, config):
 
     reply = util.send(config, topic, payload, args.quiet)
     return reply["status"]
+
+
 #===========================================================================
+def beep(args, config):
+    topic = "%s/%s" % (args.topic, args.address)
+    payload = {
+        "cmd" : "beep",
+        }
+
+    reply = util.send(config, topic, payload, args.quiet)
+    return reply["status"]
+    #===========================================================================

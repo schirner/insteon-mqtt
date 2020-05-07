@@ -384,6 +384,14 @@ def parse_args(args):
                     help="Don't print any command results to the screen.")
     sp.set_defaults(func=device.import_scenes)
 
+    #---------------------------------------
+    # device.beep
+    sp = sub.add_parser("beep", help="Beep buzzer at device once")
+    sp.add_argument("address", help="Device address or name.")
+    sp.add_argument("-q", "--quiet", action="store_true",
+                    help="Don't print any command results to the screen.")
+    sp.set_defaults(func=device.beep)
+
     return p.parse_args(args)
 
 
