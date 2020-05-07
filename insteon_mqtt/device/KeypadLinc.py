@@ -90,6 +90,7 @@ class KeypadLinc(Base):
             'set_led_off_mask' : self.set_led_off_mask,
             'set_signal_bits' : self.set_signal_bits,
             'set_nontoggle_bits' : self.set_nontoggle_bits,
+            'beep' : self.beep,
             })
 
         if self.is_dimmer:
@@ -1130,6 +1131,28 @@ class KeypadLinc(Base):
             ] + [0x00] * 11)
 
         msg = Msg.OutExtended.direct(self.addr, 0x2e, 0x00, data)
+
+        # Use the standard command handler which will notify us when the
+        # command is ACK'ed.
+        callback = functools.partial(self.handle_ack, task=task)
+        msg_handler = handler.StandardCmd(msg, callback, on_done)
+        self.send(msg, msg_handler)
+
+    #-----------------------------------------------------------------------
+    #def beep(self, nontoggle_bits, on_done=None):
+    def beep(self, reason="", on_done=None):
+        """Beeps the buzzer once.
+
+        Args:
+          on_done: Finished callback.  This is called when the command has
+                   completed.  Signature is: on_done(success, msg, data)
+        """
+        task = "beep once"
+        LOG.info("KeypadLinc %s setting %s", self.label, task)
+
+        # send a standard message to beep 
+        # msg format from insteon-terminal file light.py function beep()
+        msg = Msg.OutStandard.direct(self.addr, 0x30, 0x00)
 
         # Use the standard command handler which will notify us when the
         # command is ACK'ed.
