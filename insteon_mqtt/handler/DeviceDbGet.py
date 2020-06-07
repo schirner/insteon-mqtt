@@ -86,6 +86,12 @@ class DeviceDbGet(Base):
                 return Msg.CONTINUE
 
             elif msg.flags.type == Msg.Flags.Type.DIRECT_NAK:
+                # 0xFC message (DB access takes too long is not an error)
+                # try ignoring it and try receiving the rest
+                if msg.cmd2 == 0xFC: 
+                    LOG.info("%s device NAK response (ignored)", msg.from_addr)
+                    return Msg.CONTINUE
+
                 LOG.error("%s device NAK error: %s, Message: %s",
                           msg.from_addr, msg.nak_str(), msg)
                 self.on_done(False, "Database command NAK. " + msg.nak_str(),
