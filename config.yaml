@@ -159,9 +159,8 @@ mqtt:
   # https://www.home-assistant.io/docs/mqtt/discovery
   # if discover_topic is defined, devices (as defined in this config.yaml)
   # announce themselves to Home Assisstant. Announcing occurs once 
-  # upon startup. 
-  # TODO validate behavior upon reset of HA and / or broker
-  discover_topic: 'homeassistant'
+  # upon startup of insteon-mqtt and based on request (see announce_topic)
+  #discover_topic: 'homeassistant'
 
   # Home Assistant can use this topic to request discovery announcements
   # Payload:     { 'cmd' : 'register|unregister|flush'}
@@ -170,7 +169,7 @@ mqtt:
   #  flush:    unregister + register
   #
   # 
-  announce_topic: 'insteon/announce'
+  #announce_topic: 'insteon/announce'
 
     
   # Trigger modem virtual scenes.  Modem scenes are where the modem is a
