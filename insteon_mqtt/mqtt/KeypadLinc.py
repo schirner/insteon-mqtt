@@ -182,6 +182,45 @@ class KeypadLinc:
             data = self.template_data(button=1)
             topic = self.msg_dimmer_level.render_topic(data)
             link.unsubscribe(topic)
+    #-----------------------------------------------------------------------
+    def announce(self, link, discover_topic):
+        """Announce own presence for device discovery in home assistant mqtt
+        """
+        # main load 
+        # Create the topic names for button 1 == main load
+        data = self.template_data(button=1)
+        dimmable = 'true' if self.device.is_dimmer else 'false'
+        payload = {
+            'cmd_t': self.msg_dimmer_level.render_topic(self.template_data(data)), # command topic, use level for dimming
+            'stat_t': self.msg_dimmer_state.render_topic(self.template_data(data)), # state topic
+            'brightness': dimmable,       # can dim
+            'schema': 'json'         # JSON payload 
+        }
+        # use util function to complete and send the discovery message as a light entity
+        util.announce_entity_device(link, discover_topic, 'light', self, payload, '')    
+
+        # Now, deal with each button of the keypad
+        # TODO this is hard coded for 6 button keypad, improve by checking actual configuration
+        #  Potentially difficult as keypad buttons can be used for many things, i.e. the button 
+        #  may not be the primary thing to control
+        #  Use cases
+        #    - scenes i.e. groups of lights
+        #    - all on / off 
+        #    - controlling remote loads (e.g. micro module or plugin modules which are not an own input)
+        # Thoughs: incorporate link knowledge to decide what to do, also may use scene command topic
+        buttonNameA=['','','','A','B','C','D']
+        for group in [3,4,5,6]:
+            data = self.template_data(button=group)
+            # use keylinc buttons as switches.
+            # switches are not dimmable and don't have a schema 
+            payload = {
+                'cmd_t': self.msg_btn_on_off.render_topic(data), # command topic, use level for dimming
+                'stat_t': self.msg_btn_state.render_topic(data), # state topic
+            }
+
+            # use util function to complete and send the discovery message,
+            # post as a switch
+            util.announce_entity_device(link, discover_topic, 'switch', self, payload, "_" + buttonNameA[group])    
 
     #-----------------------------------------------------------------------
     # pylint: disable=arguments-differ

@@ -155,6 +155,24 @@ mqtt:
   cmd_topic: 'insteon/command'
 
 
+  # Home Assistant implements mqtt device discovery as outlined at:
+  # https://www.home-assistant.io/docs/mqtt/discovery
+  # if discover_topic is defined, devices (as defined in this config.yaml)
+  # announce themselves to Home Assisstant. Announcing occurs once 
+  # upon startup. 
+  # TODO validate behavior upon reset of HA and / or broker
+  discover_topic: 'homeassistant'
+
+  # Home Assistant can use this topic to request discovery announcements
+  # Payload:     { 'cmd' : 'register|unregister|flush'}
+  #  register: send discovery announcement for all supported devices
+  #  unregister: send emtpy discovery announcement which will delete the item in HA
+  #  flush:    unregister + register
+  #
+  # 
+  announce_topic: 'insteon/announce'
+
+    
   # Trigger modem virtual scenes.  Modem scenes are where the modem is a
   # controller and emits a scene broadcast with the specified group number.
   # There is no state topic since the scene doesn't have an on/off state.

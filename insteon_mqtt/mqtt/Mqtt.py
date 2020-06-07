@@ -89,6 +89,8 @@ class Mqtt:
         - retain:      (bool) Retain sent messages (Default True)
         - cmd_topic:   (str) The MQTT topic prefix to subscribe to for
                        system commands.
+        - announce_topic:   (str) The MQTT topic prefix to subscribe to for
+                       announce commands.
 
         Args:
           data (dict):  Configuration data to load.
@@ -99,6 +101,18 @@ class Mqtt:
 
         # Create a template for prcessing messages on the command topic.
         self._cmd_topic = MsgTemplate.clean_topic(data['cmd_topic'])
+
+        # Create the template for discovery topic
+        # default value is None (do not announce presence)
+        self._discover_topic = data.get('discover_topic', None)
+        if self._discover_topic: 
+            self._discover_topic = MsgTemplate.clean_topic(self._discover_topic)
+
+        # Create the template for discovery topic
+        # default value is None (do not listen to announce requests)
+        self._announce_topic = data.get('announce_topic', None)
+        if self._announce_topic: 
+            self._announce_topic = MsgTemplate.clean_topic(self._announce_topic)
 
         # MQTT message parameters.
         self.qos = data.get('qos', self.qos)
@@ -149,6 +163,48 @@ class Mqtt:
         if connected:
             self._subscribe()
 
+            # make devices announce themselves for auto discovery
+            self.announce()
+
+    def announce(self):
+        """Announce discovery message to Home Assistant"""
+        
+        LOG.ui("Sending discovery announcements.")
+        nOK = 0
+        nNOK = 0
+
+        # let each device announce itself (if its class has an announce method)
+        for device in self.devices.values():
+            try:
+                device.announce(self.link, self._discover_topic)
+                nOK = nOK + 1
+            except AttributeError:
+                # no need to do anything if announce is not implemented
+                # just skip
+                nNOK = nNOK + 1
+
+        LOG.ui("Send announcements for %d device (%d skipped since not implemented)", nOK, nNOK)
+
+    def unannounce(self):
+        """Announce empty discovery messages to Home Assistant"""
+        
+        LOG.ui("Sending empty discovery announcements to delete.")
+        nOK = 0
+        nNOK = 0
+
+        # let each device announce itself (if its class has an announce method)
+        for device in self.devices.values():
+            try:
+                device.unannounce(self.link, self._discover_topic)
+                nOK = nOK + 1
+            except AttributeError:
+                # no need to do anything if announce is not implemented
+                # just skip
+                nNOK = nNOK + 1
+
+        LOG.ui("Send empty announcements for %d devices (%d skipped since not implemented)", nOK, nNOK)
+
+
     #-----------------------------------------------------------------------
     def handle_new_device(self, modem, device):
         """New Insteon device callback.
@@ -175,6 +231,11 @@ class Mqtt:
         # Set the configuration input data for this device type.
         if self._config:
             obj.load_config(self._config, self.qos)
+
+        # NOTE announce code not added to here, sequence seems
+        # to first load insteon devices, then connect to broker
+        # hence sending out discovery messages is handled in the 
+        # handle_connected 
 
         # Save the MQTT device so we can find it again.
         self.devices[device.addr.id] = obj
@@ -284,6 +345,77 @@ class Mqtt:
             end_reply()
 
     #-----------------------------------------------------------------------
+    def handle_announce(self, client, userdata, message):
+        """MQTT announce message callback.
+
+        This is called when an MQTT message is received for controlling 
+        discovery behavior. This is for all devices together.
+
+        Args:
+          client (paho.Client):  The paho mqtt client (self.link).
+          data:  Optional user data (unused).
+          message:  MQTT message - has attrs: topic, payload, qos, retain.
+        """
+        LOG.info("MQTT message %s %s", message.topic, message.payload)
+
+        # Decode the JSON payload.
+        try:
+            data = json.loads(message.payload.decode("utf-8"))
+        except:
+            LOG.exception("Error decoding command payload: %s",
+                          message.payload)
+            return
+
+        # NOTE the reply handing with GUI is just copied from handle_cmd 
+        #  (except the callback as MQTT stuff is done synchronous in this
+        #   thread -- I presume )
+
+        # For commands, we want the ability to send messages back to show
+        # what's happening with the command.  We can't just print them
+        # because this is a server.  So if the sender puts a 'session' key in
+        # the data, we'll publish these user interface messages to that topic
+        # so the remote client can get status upates.  Obviously the remote
+        # client and this code have to match what they expect the session
+        # topic to be.
+        end_reply = lambda *x: None
+        if "session" in data:
+            # Turn the session into a topic.
+            reply_topic = "%s/session/%s" % (message.topic,
+                                             data.pop("session"))
+
+            # Push the handle_reply callback to the logging object.  This way
+            # any call to LOG.UI() will send out a message.  This allows the
+            # server code to use the regular logging API to send out UI
+            # messages to the remote client with out changing any of the
+            # code.
+            reply_cb = functools.partial(self.handle_reply, topic=reply_topic)
+            LOG.set_ui_callback(reply_cb)
+
+            # end_reply is called when the command is done and passes
+            # record=None to indicate the command is finished.
+            end_reply = functools.partial(self.handle_reply, None,
+                                          topic=reply_topic)
+
+        if (data['cmd'] == 'register'):
+            # announce own presence and presence of each device
+            self.announce()
+        elif (data['cmd'] == 'unregister'):
+            # delete any previously announced entities
+            self.unannounce()
+        elif (data['cmd'] == 'flush'):
+            self.unannounce()
+            self.announce()
+        else:
+            # unkown command
+            LOG.error("Unknown announce command '%s'", data[cmd])
+            end_reply()
+            return
+
+        end_reply()
+        return
+
+
+    #-----------------------------------------------------------------------
     def handle_reply(self, record, topic):
         """: Session logging reply.
 
@@ -326,6 +458,10 @@ class Mqtt:
             self.link.subscribe(self._cmd_topic + "/+", self.qos,
                                 self.handle_cmd)
 
+        if self._announce_topic:
+            self.link.subscribe(self._announce_topic, self.qos,
+                                self.handle_announce)
+
         for device in self.devices.values():
             device.subscribe(self.link, self.qos)
 
@@ -337,6 +473,9 @@ class Mqtt:
         """
         if self._cmd_topic:
             self.link.unsubscribe(self._cmd_topic + "/+")
+
+        if self._announce_topic:
+            self.link.unsubscribe(self._announce_topic)
 
         for device in self.devices.values():
             device.unsubscribe(self.link)
