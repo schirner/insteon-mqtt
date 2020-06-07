@@ -123,6 +123,20 @@ class Dimmer:
         link.unsubscribe(topic)
 
     #-----------------------------------------------------------------------
+    def announce(self, link, discover_topic):
+        """Announce own presence for device discovery in home assistant mqtt
+        """
+        # prep specific payload for dimmer
+        payload = {
+            'cmd_t': self.msg_level.render_topic(self.template_data()), # command topic, use level for dimming
+            'stat_t': self.msg_state.render_topic(self.template_data()), # state topic
+            'brightness': 'true',       # can dim
+            'schema': 'json',         # JSON payload 
+        }
+        # use util function to complete and send the discovery message
+        util.announce_entity_device(link, discover_topic, 'light', self, payload, '')    
+
+    #-----------------------------------------------------------------------
     # pylint: disable=arguments-differ
     def template_data(self, level=None, mode=on_off.Mode.NORMAL, manual=None,
                       reason=None):

@@ -9,6 +9,7 @@ from .. import config
 from . import device
 from . import modem
 from . import start
+from . import announce
 
 
 def parse_args(args):
@@ -384,6 +385,14 @@ def parse_args(args):
                     help="Don't print any command results to the screen.")
     sp.set_defaults(func=device.import_scenes)
 
+    #---------------------------------------
+    # discovery command
+    sp = sub.add_parser("discovery", help="Send Home Assistant Discovery messages about Insteon devices")
+    sp.add_argument("mode", choices=["register", "unregister", "flush"], default='register', help="what type to announce")
+    sp.add_argument("-q", "--quiet", action="store_true",
+                    help="Don't print any command results to the screen.")
+    sp.set_defaults(func=announce.sendRequest)
+
     return p.parse_args(args)
 
 
@@ -397,6 +406,12 @@ def main(mqtt_converter=None):
     topic = cfg.get("mqtt", {}).get("cmd_topic", None)
     if topic:
         args.topic = topic
+
+    # get announce topic from config and pass into just in case 
+    # an announce command is requested
+    announce_topic = cfg.get("mqtt", {}).get("announce_topic", None)
+    if announce_topic:
+        args.announce_topic = announce_topic
 
     return args.func(args, cfg)
 

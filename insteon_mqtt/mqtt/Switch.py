@@ -7,6 +7,7 @@ from .. import log
 from .. import on_off
 from .MsgTemplate import MsgTemplate
 from . import util
+import json
 
 LOG = log.get_logger()
 
@@ -106,7 +107,19 @@ class Switch:
         topic = self.msg_scene.render_topic(self.template_data())
         link.unsubscribe(topic)
 
-    #-----------------------------------------------------------------------
+     #-----------------------------------------------------------------------
+    def announce(self, link, discover_topic):
+        """Announce own presence for device discovery in home assistant mqtt
+        """
+        # switches only have on / off command and state
+        payload = {
+            'cmd_t': self.msg_on_off.render_topic(self.template_data()), # command topic, use level for dimming
+            'stat_t': self.msg_state.render_topic(self.template_data()), # state topic
+        }
+        # use util function to complete and send the discovery message
+        util.announce_entity_device(link, discover_topic, 'switch', self, payload, '')    
+
+   #-----------------------------------------------------------------------
     def template_data(self, is_on=None, mode=on_off.Mode.NORMAL,
                       manual=None, reason=None):
         """Create the Jinja templating data variables for on/off messages.

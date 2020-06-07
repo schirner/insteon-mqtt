@@ -5,6 +5,7 @@
 #===========================================================================
 from .. import log
 from .MsgTemplate import MsgTemplate
+from . import util
 
 LOG = log.get_logger()
 
@@ -82,6 +83,41 @@ class BatterySensor:
           link (network.Mqtt):  The MQTT network client to use.
         """
         pass
+
+    #-----------------------------------------------------------------------
+    def announce(self, link, discover_topic):
+        """Announce own presence for device discovery in home assistant mqtt
+        """
+        # Definition of discovery format at:
+        #  https://www.home-assistant.io/docs/mqtt/discovery/
+
+
+        # construct topic and payload to post
+        # TODO this assumes motion sensor, but could also be an open / close 
+        #      don't know yet how to distinguish
+        # main topic (i.e. motion)
+        payload = {
+            'stat_t': self.msg_state.render_topic(self.template_data()), # state topic
+            'device_class': 'motion',       # is a motion sensor
+        }
+        util.announce_entity_device(link, discover_topic, 'binary_sensor', self, payload, '')
+
+        # dusk / dawn
+        # be conservative and check first if msg_dawn exists
+        if hasattr(self, 'msg_dawn') and self.msg_dawn:
+          payload = {
+              'stat_t': self.msg_dawn.render_topic(self.template_data()), # state topic
+              'device_class': 'light',       # is a motion sensor
+          }
+        util.announce_entity_device(link, discover_topic, 'binary_sensor', self, payload, '_dawn')
+
+        # battery (should exist since this is a battery sensor)
+        payload = {
+            'stat_t': self.msg_battery.render_topic(self.template_data()), # state topic
+            'device_class': 'battery',       # can dim
+        }
+        util.announce_entity_device(link, discover_topic, 'binary_sensor', self, payload, '_battery')
+
 
     #-----------------------------------------------------------------------
     def template_data(self, is_on=None, is_low=None):

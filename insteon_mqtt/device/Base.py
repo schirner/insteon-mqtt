@@ -63,18 +63,25 @@ class Base:
                 assert len(config) == 1
                 addr, name = next(iter(config.items()))
                 if name:
+                    name_caps = name
                     name = name.lower()
 
             # Otherwise it's just the address
             else:
                 addr = config
                 name = None
+                name_caps = None
 
             # Create the device using the class constructor.  Use kwargs
             # syntax so any extra keyword args don't have to be at the end of
             # the arg list.
             device = cls(protocol=protocol, modem=modem, address=addr,
                          name=name, **kwargs)
+
+            # set the device name with caps in set method to avoid having
+            # to modify all constructors just to get back to the base class
+            device.name_caps_set(name_caps)
+            
             devices.append(device)
 
         return devices
@@ -98,6 +105,7 @@ class Base:
         self.modem = modem
         self.addr = Address(address)
         self.name = name
+        self.name_caps = None   
 
         # Moving window history of messages that are received from the
         # device.  Used for optimal hop computations.
@@ -140,6 +148,16 @@ class Base:
         # current.  The only way to get this is by sending a refresh message
         # out and getting the response - not by downloading the database.
         self._next_db_delta = None
+
+
+    #-----------------------------------------------------------------------
+    def name_caps_set(self, name_caps):
+        """Sets the name of the device including capital letters for 
+           nicer identification in home assistant
+        """
+        # Set method implemented in base so that not all device classes
+        # have to change their constructors, just to pass the name around
+        self.name_caps = name_caps
 
     #-----------------------------------------------------------------------
     def clear_db_config(self):
