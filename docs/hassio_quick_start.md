@@ -90,6 +90,18 @@ This package assumes that you:
    make changes to the Insteon links (scenes) manually without using
    the server.
 
+9) Home Assistant Device Discovery: devices in the config.yaml can be 
+   automatically announced to Home Assistant using 
+   [MQTT discovery](https://www.home-assistant.io/docs/mqtt/discovery/).
+   To enable device discovery edit config.yaml and enable ```discover_topic``` 
+   and ```announce_topic```. 
+   
+   Device presence is announced when insteon-mqtt starts. However, devices 
+   become grayed out after Home Assistant restarts. To have the devices 
+   being re-announced after HA starts, create an HA automation that listens 
+   to ```homeassistant_start``` event and sends an MQTT message to the 
+   ```announce_topic```.
+
 ## Updating
 
 To update, replace your `/addons/insteon-mqtt/config.json` with the most
