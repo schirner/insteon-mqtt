@@ -98,10 +98,21 @@ This package assumes that you:
    
    Device presence is announced when insteon-mqtt starts. However, devices 
    become grayed out after Home Assistant restarts. To have the devices 
-   being re-announced after HA starts, create an HA automation that listens 
-   to ```homeassistant_start``` event and sends an MQTT message to the 
-   ```announce_topic```.
-
+   being re-announced by insteon-mqtt after HA starts, create an automation 
+   within home assistant (e.g. in automation.yaml) such as: 
+   
+~~~
+- alias: insteon-mqtt: on startup, request auto discovery info
+  trigger:
+    platform: homeassistant
+    event: start
+  action:
+    service: mqtt.publish
+    data: 
+      topic: 'insteon/announce'
+      payload: "{\"cmd\":\"register\"}"
+ ~~~
+   
 ## Updating
 
 To update, replace your `/addons/insteon-mqtt/config.json` with the most
