@@ -102,7 +102,7 @@ This package assumes that you:
    within home assistant (e.g. in automation.yaml) such as: 
    
 ~~~
-- alias: insteon-mqtt: on startup, request auto discovery info
+- alias: on startup, request auto discovery info from insteon-mqtt 
   trigger:
     platform: homeassistant
     event: start
