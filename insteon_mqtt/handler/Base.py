@@ -57,6 +57,19 @@ class Base:
         self._msg = None
 
     #-----------------------------------------------------------------------
+    def set_retry_num(self, retry_num):
+        """Used to set the number of retrie
+
+        The number of times to retry the message if the handler times out
+        without returning Msg.FINISHED. This count does not include the initial
+        sending so a retry of 3 will send once and then retry 3 more times.
+
+        Args:
+           retry_num (int):  The number of retries
+        """
+        self._num_retry = retry_num
+
+    #-----------------------------------------------------------------------
     def sending_message(self, msg):
         """Messaging being sent callback.
 
@@ -107,8 +120,8 @@ class Base:
 
         # If we've exhausted the number of sends, end the handler.
         elif not self._msg or self._num_sent > self._num_retry:
-            LOG.warning("Handler timed out - no more retries (%s sent)",
-                        self._num_sent - 1)
+            LOG.error("Handler timed out - no more retries (%s sent)",
+                      self._num_sent - 1)
             self.handle_timeout(protocol)
             return True
 
@@ -117,12 +130,14 @@ class Base:
 
         # Increase the hop count if we can.
         if isinstance(self._msg, Msg.OutStandard):  # also handles OutExtended
-            num_hops = max(3, self._msg.flags.max_hops)
+            num_hops = min(3, self._msg.flags.max_hops + 1)
             LOG.debug("Increasing max_hops to %d", num_hops)
             self._msg.flags.set_hops(num_hops)
 
         # Otherwise we should try and resend the message with ourselves as
         # the handler again so we don't lose the count.
+        # This calls protocol rather then device so that the hops count is
+        # correcly set, also since we don't have the Device object here
         protocol.send(self._msg, self)
 
         # Tell the protocol that we're expired.  This will end this handler

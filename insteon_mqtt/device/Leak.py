@@ -3,15 +3,15 @@
 # Insteon leak sensor
 #
 #===========================================================================
-from .Base import Base
-from ..CommandSeq import CommandSeq
+from .BatterySensor import BatterySensor
 from .. import log
 from ..Signal import Signal
+from .. import message as Msg
 
 LOG = log.get_logger()
 
 
-class Leak(Base):
+class Leak(BatterySensor):
     """Insteon battery powered water leak sensor.
 
     A leak sensor is basically an on/off sensor except that it's batter
@@ -42,6 +42,8 @@ class Leak(Base):
     - signal_heartbeat( Device, True ): Sent when the device has broadcast a
       heartbeat signal.
     """
+    type_name = "leak_sensor"
+
     def __init__(self, protocol, modem, address, name=None):
         """Constructor
 
@@ -57,8 +59,6 @@ class Leak(Base):
 
         # Wet/dry signal.  API: func( Device, bool is_wet )
         self.signal_wet = Signal()
-        # Sensor heartbeat signal.  API: func( Device, True )
-        self.signal_heartbeat = Signal()  # (Device, bool)
 
         # Maps Insteon groups to message type for this sensor.
         self.group_map = {
@@ -73,104 +73,6 @@ class Leak(Base):
         self._is_wet = False
 
     #-----------------------------------------------------------------------
-    def pair(self, on_done=None):
-        """Pair the device with the modem.
-
-        This only needs to be called one time.  It will set the device as a
-        controller and the modem as a responder for all of the groups that
-        the device can alert on.
-
-        The device must already be a responder to the modem (push set on the
-        modem, then set on the device) so we can update it's database.
-
-        Args:
-          on_done: Finished callback.  This is called when the command has
-                   completed.  Signature is: on_done(success, msg, data)
-        """
-        LOG.info("LeakSensor %s pairing", self.addr)
-
-        # Build a sequence of calls to the do the pairing.  This insures each
-        # call finishes and works before calling the next one.  We have to do
-        # this for device db manipulation because we need to know the memory
-        # layout on the device before making changes.
-        seq = CommandSeq(self.protocol, "LeakSensor paired", on_done)
-
-        # Start with a refresh command - since we're changing the db, it must
-        # be up to date or bad things will happen.
-        seq.add(self.refresh)
-
-        # Add the device as a responder to the modem on group 1.  This is
-        # probably already there - and maybe needs to be there before we can
-        # even issue any commands but this check insures that the link is
-        # present on the device and the modem.
-        # This link handle the dry event
-        seq.add(self.db_add_resp_of, 0x01, self.modem.addr, 0x01,
-                refresh=False)
-
-        # This link handle the wet event
-        seq.add(self.db_add_ctrl_of, 0x02, self.modem.addr, 0x02,
-                refresh=False)
-
-        # This link handle the heartbeat event
-        seq.add(self.db_add_ctrl_of, 0x04, self.modem.addr, 0x04,
-                refresh=False)
-
-        # Finally start the sequence running.  This will return so the
-        # network event loop can process everything and the on_done callbacks
-        # will chain everything together.
-        seq.run()
-
-    #-----------------------------------------------------------------------
-    def handle_broadcast(self, msg):
-        """Handle broadcast messages from this device.
-
-        A broadcast message is sent from the device when any activity is
-        triggered.
-
-        This callback will process the broadcast and emit the signals that
-        correspond the events.
-
-        Then the base class handle_broadcast() is called.  That will loop
-        over every device that is linked to this device in the database and
-        call handle_group_cmd() on those devices.  That insures that the
-        devices that are linked to this device get updated to their correct
-        states (Insteon devices don't send out a state change when the
-        respond to a broadcast).
-
-        Args:
-          msg (InpStandard):  Broadcast message from the device.
-        """
-        # ACK of the broadcast - ignore this.
-        if msg.cmd1 == 0x06:
-            LOG.info("LeakSensor %s broadcast ACK grp: %s", self.addr,
-                     msg.group)
-
-        # On (0x11) and off (0x13) commands.
-        elif msg.cmd1 == 0x11 or msg.cmd1 == 0x13:
-            LOG.info("LeakSensor %s broadcast cmd %s grp: %s", self.addr,
-                     msg.cmd1, msg.group)
-
-            # Find the callback for this group and run that.
-            handler = self.group_map.get(msg.group, None)
-            if handler:
-                handler(msg)
-            else:
-                LOG.error("LeakSensor no handler for group %s", msg.group)
-
-            # This will find all the devices we're the controller of for this
-            # group and call their handle_group_cmd() methods to update their
-            # states since they will have seen the group broadcast and updated
-            # (without sending anything out).
-            super().handle_broadcast(msg)
-
-        # If we haven't downloaded the device db yet, use this opportunity to
-        # get the device db since we know the sensor is awake.  This doesn't
-        # always seem to work, but it works often enough to be useful to try.
-        if len(self.db) == 0:
-            LOG.info("LeakSensor %s awake - requesting database", self.addr)
-            self.refresh(force=True)
-
-    #-----------------------------------------------------------------------
     def handle_dry(self, msg):
         """Handle a dry message.
 
@@ -180,8 +82,14 @@ class Leak(Base):
         Args:
           msg (InpStandard):  Broadcast message from the device.
         """
-        LOG.info("LeakSensor received is-dry message")
-        self._set_is_wet(False)
+        # ACK of the broadcast - ignore this.
+        if msg.cmd1 == Msg.CmdType.LINK_CLEANUP_REPORT:
+            LOG.info("LeakSensor %s broadcast ACK grp: %s", self.addr,
+                     msg.group)
+        else:
+            LOG.info("LeakSensor %s received is-dry message", self.label)
+            self._set_is_wet(False)
+            self.update_linked_devices(msg)
 
     #-----------------------------------------------------------------------
     def handle_wet(self, msg):
@@ -193,8 +101,14 @@ class Leak(Base):
         Args:
           msg (InpStandard):  Broadcast message from the device.
         """
-        LOG.info("LeakSensor received is-wet message")
-        self._set_is_wet(True)
+        # ACK of the broadcast - ignore this.
+        if msg.cmd1 == Msg.CmdType.LINK_CLEANUP_REPORT:
+            LOG.info("LeakSensor %s broadcast ACK grp: %s", self.addr,
+                     msg.group)
+        else:
+            LOG.info("LeakSensor %s received is-wet message", self.label)
+            self._set_is_wet(True)
+            self.update_linked_devices(msg)
 
     #-----------------------------------------------------------------------
     def handle_heartbeat(self, msg):
@@ -209,13 +123,20 @@ class Leak(Base):
         Args:
           msg (InpStandard):  Broadcast message from the device.
         """
-        # Update the wet/dry state using the heartbeat if needed.
-        is_wet = msg.cmd1 == 0x13
-        if self._is_wet != is_wet:
-            self._set_is_wet(is_wet)
+        # ACK of the broadcast - ignore this.
+        if msg.cmd1 == Msg.CmdType.LINK_CLEANUP_REPORT:
+            LOG.info("LeakSensor %s broadcast ACK grp: %s", self.addr,
+                     msg.group)
+        else:
+            LOG.info("LeakSensor %s received heartbeat", self.label)
+            # Update the wet/dry state using the heartbeat if needed.
+            is_wet = msg.cmd1 == 0x13
+            if self._is_wet != is_wet:
+                self._set_is_wet(is_wet)
 
-        # Send True for any heart beat message
-        self.signal_heartbeat.emit(self, True)
+            # Send True for any heart beat message
+            self.signal_heartbeat.emit(self, True)
+            self.update_linked_devices(msg)
 
     #-----------------------------------------------------------------------
     def handle_refresh(self, msg):

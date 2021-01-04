@@ -27,24 +27,26 @@ class CommandSeq:
     this library needs, it works ok.
     """
     #-----------------------------------------------------------------------
-    def __init__(self, protocol, msg=None, on_done=None, error_stop=True):
+    def __init__(self, device, msg=None, on_done=None, error_stop=True,
+                 name=""):
         """Constructor
 
         Args:
-          protocol (Protocol): The Protocol object to use.  This can also be a
-                   device.Base object.
+          device (Device): The device that these messages are sent to.
           msg (str): String message to pass to on_done if the sequence works.
           on_done: The callback to run when complete.  This will be run
                    when there is an error or when all the commands finish.
           error_stop (bool): True to stop the sequence if a command fails.
                      False to continue on with the sequence.
+          name (str): A short name used in logging to identify this sequence
         """
-        self.protocol = protocol
+        self.device = device
 
         self._on_done = util.make_callback(on_done)
         self.msg = msg
         self.error_stop = error_stop
         self.total = 0
+        self.name = name
 
         # List of Entry objects (see class below) to call for each step in
         # the sequence.
@@ -126,11 +128,11 @@ class CommandSeq:
 
         # Otherwise run the next command.
         else:
-            LOG.debug("Running command %d of %d", self.total + 1 -
-                      len(self.calls), self.total)
+            LOG.debug("CmdSeq %s Running %d of %d", self.name,
+                      self.total + 1 - len(self.calls), self.total)
 
             entry = self.calls.pop(0)
-            entry.run(self.protocol, self.on_done)
+            entry.run(self.device, self.on_done)
 
     #-----------------------------------------------------------------------
 
@@ -185,17 +187,17 @@ class Entry:
         return obj
 
     #-----------------------------------------------------------------------
-    def run(self, protocol, on_done):
+    def run(self, device, on_done):
         """Run the command.
 
         Args:
-          protocol:   The Protocol object to use to send messages.
+          device:     The Device object to use to send messages.
           on_done:    The finished calllback.  This will be passed to the
                       handler or the function.
         """
         if self.func is None:
             self.handler.on_done = on_done
-            protocol.send(self.msg, self.handler)
+            device.send(self.msg, self.handler)
 
         else:
             self.func(*self.args, on_done=on_done, **self.kwargs)

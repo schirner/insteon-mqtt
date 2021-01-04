@@ -9,11 +9,13 @@ My initial intent with this package is better integrate Insteon into
 Home Assistant and make it easier and more understandable to add new
 features and devices.
 
-Version: 0.7.2  ([History](HISTORY.md))
+Version: 0.7.5  ([History](CHANGELOG.md))
 
-### Breaking changes from last version:
+### Recent Breaking Changes
 
-- KeypadLinc now supports both dimmer and on/off device types.  This required
+- 0.7.4 - IOLinc, the scene_topic has been elimited, please see the documentation
+  for the replaces functionality.
+- 0.7.2 - KeypadLinc now supports both dimmer and on/off device types.  This required
   changing the KeypadLinc inputs in the MQTT portion of the config.yaml file.
   See the file in the repository for the new input fields. ([Issue #33][I33]).
 
@@ -23,8 +25,8 @@ Version: 0.7.2  ([History](HISTORY.md))
 Blah, blah, blah, too much reading, how do I use it?  [Read the quick
 start guide](docs/quick_start.md)
 
-Using hassio? [Read the hass.io quick start guide](docs/hassio_quick_start.md)
-
+Using Home Assistant Supervisor?
+[Install Insteon-MQTT as an Add-on](docs/HA_Addon_Instructions.md)
 
 # Overview
 

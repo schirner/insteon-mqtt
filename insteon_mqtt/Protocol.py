@@ -6,6 +6,7 @@
 import collections
 import enum
 import time
+import datetime
 from . import log
 from . import message as Msg
 from .Signal import Signal
@@ -87,6 +88,11 @@ class Protocol:
 
         # Message received signal.  Every read message is passed to this.
         self.signal_received = Signal()  # (Message)
+
+        # Message finished signal.  Every write message that completes with
+        # Msg.FINISHED, will be emitted here.  Notably happens AFTER msg has
+        # been removed from the _write_queue
+        self.signal_msg_finished = Signal()  # (Message)
 
         # Inbound message buffer.
         self._buf = bytearray()
@@ -225,12 +231,33 @@ class Protocol:
     def set_wait_time(self, wait_time):
         """Set the Next Time that a Message Can be Sent to Avoid Collision.
 
-        Next time that a message can be written.
+        Next time that a message can be written.  If the wait time is set to
+        zero, it will cancel all pending wait time.  If the wait time is
+        less than the current pending wait time, it will be ignored.
 
         Args:
           wait_time (epoch Seconds): The next time a message can be sent
         """
-        self._next_write_time = wait_time
+        if wait_time == 0 or wait_time > self._next_write_time:
+            wait_time = time.time() if wait_time == 0 else wait_time
+            self._next_write_time = wait_time
+            print_time = datetime.datetime.fromtimestamp(
+                self._next_write_time).strftime('%H:%M:%S.%f')[:-3]
+            LOG.debug("Setting next write time: %s", print_time)
+
+    #-----------------------------------------------------------------------
+    def is_addr_in_write_queue(self, addr):
+        """Checks whether a message to the specified address already exists
+        in the _write_queue
+
+        Args:
+          addr (Address): The address to search for.
+        """
+        for out in self._write_queue:
+            if isinstance(out.msg, (Msg.OutExtended, Msg.OutStandard)):
+                if out.msg.to_addr == addr:
+                    return True
+        return False
 
     #-----------------------------------------------------------------------
     def _poll(self, t):
@@ -280,6 +307,14 @@ class Protocol:
             #LOG.debug("Searching message (len %d): %s... ",
             #               len(self._buf), util.to_hex(self._buf,20))
 
+            # Look for PLM slow down messages
+            start = self._buf.find(0x15)
+            if start == 0:
+                LOG.info("PLM is busy, pausing briefly")
+                self.set_wait_time(time.time() + .3)
+                self._buf = self._buf[1:]
+                continue
+
             # Find a message start token.  Note that this token could also
             # appear in the middle of a message so we can't be totally sure
             # it's a message until we try to parse it.  If there is no
@@ -293,7 +328,7 @@ class Protocol:
                 break
 
             # Move the buffer to the start token.  Make sure we still have at
-            # lesat 2 bytes or wait for more to arrive.
+            # least 2 bytes or wait for more to arrive.
             if start != 0:
                 LOG.debug("0x02 found at byte %d - shifting", start)
                 self._buf = self._buf[start:]
@@ -306,7 +341,9 @@ class Protocol:
             msg_class = Msg.types.get(msg_type, None)
             if not msg_class:
                 LOG.info("Skipping unknown message type %#04x", msg_type)
-                self._buf = self._buf[2:]
+                # Only dropping the first byte (0x02), as the second byte could
+                # be 0x02. Let the find function to locate the next 0x02
+                self._buf = self._buf[1:]
                 continue
 
             # See if we have enough bytes to read the message.  If not, wait
@@ -361,8 +398,7 @@ class Protocol:
 
         # Update the next allowed write time based on the number of hops that
         # are remaining on the inbound message.
-        self._next_write_time = msg.expire_time
-        LOG.debug("Setting next write time: %f", self._next_write_time)
+        self.set_wait_time(msg.expire_time)
 
         # See if we have a duplicate message.
         if msg in self._read_history:
@@ -421,6 +457,8 @@ class Protocol:
             if status == Msg.FINISHED:
                 LOG.debug("Write handler finished")
                 self._write_finished()
+                # Notify any listeners that msg FINISHED
+                self.signal_msg_finished.emit(msg)
                 return
 
             # If this message was understood by the write handler, don't look
@@ -446,8 +484,9 @@ class Protocol:
         # No handler was found for the message.  Shift pass the ID code and
         # look for more messages.  This might be better by having a lookup by
         # msg ID->msg size and use that to skip the whole message.
-        LOG.warning("No read handler found for message type %#04x: %s",
-                    msg.msg_code, msg)
+        # This was likely a dublicate message
+        LOG.info("No read handler found for message type %#04x: %s",
+                 msg.msg_code, msg)
 
     #-----------------------------------------------------------------------
     def _write_finished(self):
@@ -502,7 +541,7 @@ class Protocol:
         msg_bytes = out.msg.to_bytes()
 
         LOG.info("Write message to modem: %s", out.msg)
-        LOG.debug("Write bytes to modem: %s", msg_bytes)
+        LOG.debug("Write bytes to modem: %s", msg_bytes.hex())
 
         # Write the message to the PLM modem.  The message will only be sent
         # when the current time is after the next write time as tracked by

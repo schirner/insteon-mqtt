@@ -4,7 +4,6 @@
 #
 #===========================================================================
 import json
-import time
 import os.path
 from .MsgHistory import MsgHistory
 from ..Address import Address
@@ -150,6 +149,14 @@ class Base:
         self._next_db_delta = None
 
 
+        # Define the controller groups that exist on the device as the keys in
+        # this map and the handler functions responsible for handling broadcast
+        # commands received when these controllers are used as the values.
+        # This is also used by pair() to link these controller groups to the
+        # modem.  Generally if a device has a responder only group, it does
+        # not need to be paired
+        self.group_map = {}
+
     #-----------------------------------------------------------------------
     def name_caps_set(self, name_caps):
         """Sets the name of the device including capital letters for 
@@ -286,7 +293,7 @@ class Base:
         LOG.info("Join Device %s", self.addr)
 
         # Using a sequence so we can pass the on_done function through.
-        seq = CommandSeq(self.protocol, "Operation Complete", on_done)
+        seq = CommandSeq(self, "Device joined.", on_done, name="JoinSequence")
 
         # First get the engine version.  This process only works and is
         # necessary on I2CS devices.
@@ -317,7 +324,7 @@ class Base:
             return
         else:
             # Build a sequence of calls to do the link.
-            seq = CommandSeq(self.protocol, "Operation Complete", on_done)
+            seq = CommandSeq(self, "Join Complete", on_done, name="JoinDevice")
 
             # Put Modem in linking mode first
             seq.add(self.modem.linking)
@@ -361,17 +368,38 @@ class Base:
         """Pair the device with the modem.
 
         This only needs to be called one time.  It will set the device as a
-        controller and the modem as a responder for all of the groups that
-        the device can alert on.
+        controller and the modem as a responder so the modem will see group
+        broadcasts and report them to us.
 
-        The default implementation does nothing - subclasses should
-        re-implement this to do proper pairing.
+        The device must already be a responder to the modem (push set on the
+        modem, then set on the device) so we can update it's database.
 
         Args:
           on_done: Finished callback.  This is called when the command has
                    completed.  Signature is: on_done(success, msg, data)
         """
-        LOG.error("Device %s doesn't support pairing", self.label)
+        LOG.info("Device %s pairing", self.label)
+
+        # Build a sequence of calls to the do the pairing.  This insures each
+        # call finishes and works before calling the next one.  We have to do
+        # this for device db manipulation because we need to know the memory
+        # layout on the device before making changes.
+        seq = CommandSeq(self, "Device paired", on_done, name="DevPair")
+
+        # Start with a refresh command - since we're changing the db, it must
+        # be up to date or bad things will happen.
+        seq.add(self.refresh)
+
+        # Now add the device as the controller of the modem for each of its
+        # groups and defined in group_map
+        for group in self.group_map:
+            seq.add(self.db_add_ctrl_of, group, self.modem.addr, 0x01,
+                    refresh=False)
+
+        # Finally start the sequence running.  This will return so the
+        # network event loop can process everything and the on_done callbacks
+        # will chain everything together.
+        seq.run()
 
     #-----------------------------------------------------------------------
     def refresh(self, force=False, on_done=None):
@@ -395,7 +423,8 @@ class Base:
         LOG.info("Device %s cmd: status refresh", self.label)
 
         # Use a sequence
-        seq = CommandSeq(self.protocol, "Device refreshed", on_done)
+        seq = CommandSeq(self, "Device refreshed", on_done,
+                         name="DeviceRefresh")
 
         # This sends a refresh ping which will respond w/ the current
         # database delta field.  The handler checks that against the
@@ -434,7 +463,6 @@ class Base:
 
     #-----------------------------------------------------------------------
     def get_flags(self, on_done=None):
-
         """Get the Insteon operational flags field from the device.
 
         The flags will be passed to the on_done callback as the data field.
@@ -472,7 +500,7 @@ class Base:
 
         # Send the get_engine_version request.
         msg = Msg.OutStandard.direct(self.addr, 0x0D, 0x00)
-        msg_handler = handler.StandardCmd(msg, self.handle_engine, on_done)
+        msg_handler = handler.StandardCmdNAK(msg, self.handle_engine, on_done)
         self.send(msg, msg_handler)
 
     #-----------------------------------------------------------------------
@@ -532,8 +560,8 @@ class Base:
         if sequence is not None:
             seq = sequence
         else:
-            seq = CommandSeq(self.protocol, "Sync complete", on_done,
-                             error_stop=False)
+            seq = CommandSeq(self, "Sync complete", on_done,
+                             error_stop=False, name="DeviceSync")
 
         if refresh:
             LOG.ui("Performing DB Refresh of %s device", self.label)
@@ -557,6 +585,7 @@ class Base:
         else:
             on_done(True, "Sync Complete", None)
 
+    #-----------------------------------------------------------------------
     def _sync_del(self, entry, dry_run, on_done=None):
         '''Deletes a link on the device with a Log UI Message
 
@@ -567,8 +596,9 @@ class Base:
             on_done(True, None, None)
         else:
             LOG.ui("  Deleting %s:", entry)
-            self.db.delete_on_device(self, entry, on_done=on_done)
+            self.db.delete_on_device(entry, on_done=on_done)
 
+    #-----------------------------------------------------------------------
     def _sync_add(self, entry, dry_run, on_done=None):
         ''' Adds a link to the device with a Log UI Message
 
@@ -579,10 +609,11 @@ class Base:
             on_done(True, None, None)
         else:
             LOG.ui("  Adding %s:", entry)
-            self.db.add_on_device(self, entry.addr, entry.group,
+            self.db.add_on_device(entry.addr, entry.group,
                                   entry.is_controller, entry.data,
                                   on_done=on_done)
 
+    #-----------------------------------------------------------------------
     def import_scenes(self, dry_run=True, save=True, on_done=None):
         """Imports Scenes Defined on the Device into the Scenes Config.
 
@@ -1039,9 +1070,29 @@ class Base:
         """Handle broadcast messages from this device.
 
         The broadcast message from a device is sent when the device is
-        triggered.  The message has the group ID in it.  We'll update the
-        device state and look up the group in the all link database.  For
-        each device that is in the group (as a reponsder), we'll call
+        triggered.  The message has the group ID in it, this uses the class
+        attribute group_map to map the group to the handler that should process
+        the message.  This handler should be prepared to receive both broadcast
+        messages and CmdType.LINK_CLEANUP_REPORT messages as well. The handler
+        should likely pass all valid broadcast commands to
+        update_linked_devices() so that the associated devices can be updated.
+
+        Args:
+          msg (InpStandard): Broadcast message from the device.
+        """
+        # Find the callback for this group and run that.
+        msg_handler = self.group_map.get(msg.group, None)
+        if msg_handler:
+            msg_handler(msg)
+        else:
+            LOG.warning("Device %s has no handler for broadcast group %s",
+                        self.label, msg.group)
+
+    #-----------------------------------------------------------------------
+    def update_linked_devices(self, msg):
+        """Update the state of linked devices from broadcast message
+
+        For each device that is in the group (as a reponsder), we'll call
         handle_group_cmd() on that device to trigger it.  This way all the
         devices in the group are updated to the correct values when we see
         the broadcast message.
@@ -1049,21 +1100,15 @@ class Base:
         Args:
           msg (InpStandard): Broadcast message from the device.
         """
+        # This will find all the devices we're the controller of for this
+        # group and call their handle_group_cmd() methods to update their
+        # states since they will have seen the group broadcast and updated
+        # (without sending anything out).
         group = msg.group
 
         responders = self.db.find_group(group)
         LOG.debug("Found %s responders in group %s", len(responders), group)
         LOG.debug("Group %s -> %s", group, [i.addr.hex for i in responders])
-
-        # A device broadcast will be followed up a series of cleanup messages
-        # between the devices and sent to the modem.  Don't send anything
-        # during this time to avoid causing a collision.  Time is equal to .5
-        # second of overhead, plus .5 seconds per responer device.  This is
-        # based off the same 87 msec empircal testing performed when designing
-        # misterhouse.  Each device causes a cleanup and an ack.  Assuminng
-        # a max of three hops in each direction that is 6 * .087 or .522 per
-        # device.
-        self.protocol.set_wait_time(time.time() + .5 + (len(responders) * .5))
 
         # For each device that we're the controller of call it's handler for
         # the broadcast message.
@@ -1074,8 +1119,8 @@ class Base:
                          device.addr, group)
                 device.handle_group_cmd(self.addr, msg)
             else:
-                LOG.warning("%s broadcast - device %s not found", self.label,
-                            elem.addr)
+                LOG.info("%s broadcast - device %s is not in config.",
+                         self.label, elem.addr)
 
     #-----------------------------------------------------------------------
     def handle_group_cmd(self, addr, msg):
@@ -1107,11 +1152,7 @@ class Base:
                    completed.  Signature is: on_done(success, msg, data)
         """
         on_done = util.make_callback(on_done)
-
-        if msg.flags.type == Msg.Flags.Type.DIRECT_ACK:
-            on_done(True, "Entered linking mode", None)
-        else:
-            on_done(False, "Linking mode failed", None)
+        on_done(True, "Entered linking mode", None)
 
     #-----------------------------------------------------------------------
     def _db_update(self, local_group, is_controller, remote_addr, remote_group,
@@ -1131,7 +1172,8 @@ class Base:
                    "Link will be only one direction",
                    util.ctrl_str(is_controller), remote_addr)
 
-        seq = CommandSeq(self.protocol, "Device db update complete", on_done)
+        seq = CommandSeq(self, "Device db update complete", on_done,
+                         name="DeviceDBUpdate")
 
         # Check for a db update - otherwise we could be out of date and not
         # know it in which case the memory addresses to add the record in
@@ -1150,7 +1192,7 @@ class Base:
             db_group = remote_group
 
         # Create a new database entry for the device and send it.
-        seq.add(self.db.add_on_device, self, remote_addr, db_group,
+        seq.add(self.db.add_on_device, remote_addr, db_group,
                 is_controller, local_data)
 
         # For two way commands, insert a callback so that when the modem
@@ -1195,7 +1237,7 @@ class Base:
             on_done(False, "Entry doesn't exist", None)
             return
 
-        seq = CommandSeq(self.protocol, "Delete complete", on_done)
+        seq = CommandSeq(self, "Delete complete", on_done, name="DeviceDBDel")
 
         # Check for a db update - otherwise we could be out of date and not
         # know it in which case the memory addresses to add the record in
@@ -1203,7 +1245,7 @@ class Base:
         if refresh:
             seq.add(self.refresh)
 
-        seq.add(self.db.delete_on_device, self, entry)
+        seq.add(self.db.delete_on_device, entry)
 
         # For two way commands, insert a callback so that when the modem
         # command finishes, it will send the next command to the device.

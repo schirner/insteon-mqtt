@@ -1,11 +1,155 @@
 # Revision Change History
 
+## [0.7.5]
+
+This is another significant update that both improves the user experience,
+adds a number of features, and improves the performance and reliability of
+the program.
+
+### Additions
+
+- Support for using an Insteon Hub as a modem.  It comes with some caveats
+  but it works well, please see
+  [Hub Instructions](https://github.com/TD22057/insteon-mqtt/blob/dev/docs/hub.md)
+  ([PR 201][P201])
+
+- Significantly improved Home Assistant Add-on installation!  
+  [Instructions](docs/HA_Addon_Instructions.md) Includes update notifications,
+  nicer icons, and better integration into Home Assistant. [PR 290][P290]
+
+- A new Web Command Line Interface for Home Assistant Installations.  No more
+  entering commands via MQTT topics and payloads.  [PR 238][P238]
+
+- More pyTests, up to 76% coverage now. ([PR 262][P262] & [PR 268][P268])
+
+- Significant improvement to the Modem database handling.  There is no longer
+  a requirement to perform the command `refresh modem` for anything with the
+  exception, that if you want to use `sync` to delete extra links off the
+  modem, you will need to perform a `refresh` so that the extraneous links
+  can be identified.  Commands will no longer fail because the modem database
+  is out of date. ([PR 279][P279])
+
+- Enable querying the battery on 2842 & 2844 Motion sensors.  Helpful if using
+  battery chemistry that varies from the OEM batteries.  Voltage will be
+  queried no more frequently than every 4 days.
+  ([PR 282][P282] & [PR 288][P288])
+
+- Better handling of local device on_levels.  If known, on_level is now
+  accurately reported when the device turns on.  Local on_level is retrieved
+  with get_flags or set with set_flags.  (thanks @tstabrawa)([PR 285][P285])
+
+### Fixes
+
+- Allow for used last entries in DB.  Improve compatibility with devices
+  setup by ISY.  ([PR 255][P255])
+
+- Improved message handling and processing of Pre_NAK messages.
+  ([PR 236][P236])
+
+- Don't treat broadcast messages from different groups as duplicate.  Fixes
+  a bug where sequential presses of a button on a keypadlinc may not emit
+  mqtt messages as they should.  (thanks @tstabrawa)([PR 256][P256])
+
+- Catch and delay on PLM reporting busy. ([PR 261][P261])
+
+- Tweak some of the logging to be more clear for users. ([PR 272][P272] &
+  [PR 275][P275])
+
+- Refactor code around Pair().  Add significant amount of unit tests.
+  ([PR 277][P277])
+
+- Improved message timing after receiving a broadcast command from a device.
+  ([PR 284][P284])
+
+- Fixed a few rare errors with the Serial interface.  (thanks @MrGibbage)
+  ([I 292][I292])
+
+## [0.7.4]
+
+### Additions
+
+- Major improvements to the IOLinc support.  In short all functions of the
+  device should now be supported.  Including momentary modes in which the
+  relay opens for a defined period of time before closing again.  Specific
+  topics have been added for the relay and the sensor so they can both be
+  tracked individually. ([PR 197][P197])  BREAKING CHANGE - the scene_topic
+  has been elimited, please see the notes below for replacement functionality.
+  Please see notes in:
+  - [config.yaml](https://github.com/TD22057/insteon-mqtt/blob/master/config.yaml) -
+    specifically the IOLinc sections in both the device and mqtt sections
+  - [MQTT Doc](https://github.com/TD22057/insteon-mqtt/blob/master/docs/mqtt.md) -
+    note the new set_flags options for IOLinc and the IOLinc section
+
+- A new queueing system for battery devices ([PR240][P240]):
+   - Messages sent to the device will be queued until the device is awake
+   - When the device sends a message, the modem will attempt to immediately
+     send the oldest outgoing message.  This only works for some devices.
+   - Added an 'awake' command, to identify when a battery device has been
+     manually awaken via holding the set button.  This will cause all queued
+     and future messages to be sent to the device for up to three minutes
+
+- Added support for querying the battery on a mini-remote.  The battery state
+  will be automatically queried when the device wakes up if is has been 4 days
+  since the last battery check and will emit messages on the battery
+  topic. ([PR 244][P244])
+
+- Added support for Smartenit EZIO4O 4 relay output module (thanks @embak)
+  ([PR 219][P219])
+
+- Device names are now printed when printing the database.  This makes reading
+  the database output much easier.  ([PR 239][P239])
+
+- Added ability to set the default ramp rate of a dimmer using the ramp_rate
+  flag.  (thanks @jordanrounds)([PR 235][P235])
+
+### Fixes
+
+- Major fixes to a number of bugs in the Scenes management functions.
+  (thanks @tstabrawa)([PR 234][P234])
+
+- Database delta is updated on database writes.  This eliminates a number of
+  unnecessary refresh requirements, particularly around pairing.  
+  ([PR 248][P248])
+
+- Minor fix to the calculation of hops on resent messages.  ([PR 259][P259])
+
+## [0.7.3]
+
+Fixing a number of small bugs in preparation for upcoming releases which
+will add new features.
+
+### Additions
+
+- Added MQTT broker ID optional config input to allow the user to input the
+  MQTT broker ID the client will use (thanks @kpfleming) ([PR #220][P220])
+
+### Fixes
+
+- Increase timeout for DB Refresh and allow retry for initial request.
+  ([PR #237][P237])
+
+- Detect disconnections during poll() calls (thanks @kpfleming) ([PR 227][P227])
+
+- Modem Responder Group from Thermostat Should be 0x01 ([PR #198][P198])
+  ([Issue 154][I154])
+
+- Fixed device db find command to check the local group so multiple responsders
+  can be created. ([Issue #181][I181])
+
+- Fixed a bug in the modem database class when removing an entry (thanks
+  @krkeegan) ([PR#196][P196])
+
+- Changed the MQTT Remote to never mark messages for retain so the broker
+  doesn't get out of sync with the device. ([Issue #I210][I210])
+
+
 ## [0.7.2]
 
 ### Fixes
 
 - Fixed an issue causing 100% cpu usage introduced in the scene sync code.
   ([Issue #195)[I195])
+
 
 ## [0.7.1]
 
@@ -363,3 +507,37 @@
 [I192]: https://github.com/TD22057/insteon-mqtt/issues/192
 [I193]: https://github.com/TD22057/insteon-mqtt/issues/193
 [I195]: https://github.com/TD22057/insteon-mqtt/issues/195
+[P196]: https://github.com/TD22057/insteon-mqtt/pull/196
+[I210]: https://github.com/TD22057/insteon-mqtt/issues/210
+[P220]: https://github.com/TD22057/insteon-mqtt/pull/220
+[I181]: https://github.com/TD22057/insteon-mqtt/issues/181
+[I154]: https://github.com/TD22057/insteon-mqtt/issues/154
+[P227]: https://github.com/TD22057/insteon-mqtt/pull/227
+[P237]: https://github.com/TD22057/insteon-mqtt/pull/227
+[P197]: https://github.com/TD22057/insteon-mqtt/pull/197
+[P240]: https://github.com/TD22057/insteon-mqtt/pull/240
+[P248]: https://github.com/TD22057/insteon-mqtt/pull/248
+[P219]: https://github.com/TD22057/insteon-mqtt/pull/219
+[P239]: https://github.com/TD22057/insteon-mqtt/pull/239
+[P244]: https://github.com/TD22057/insteon-mqtt/pull/244
+[P235]: https://github.com/TD22057/insteon-mqtt/pull/235
+[P259]: https://github.com/TD22057/insteon-mqtt/pull/259
+[P234]: https://github.com/TD22057/insteon-mqtt/pull/234
+[P236]: https://github.com/TD22057/insteon-mqtt/pull/236
+[P255]: https://github.com/TD22057/insteon-mqtt/pull/255
+[P256]: https://github.com/TD22057/insteon-mqtt/pull/256
+[P261]: https://github.com/TD22057/insteon-mqtt/pull/261
+[P262]: https://github.com/TD22057/insteon-mqtt/pull/262
+[P268]: https://github.com/TD22057/insteon-mqtt/pull/268
+[P272]: https://github.com/TD22057/insteon-mqtt/pull/272
+[P201]: https://github.com/TD22057/insteon-mqtt/pull/201
+[P275]: https://github.com/TD22057/insteon-mqtt/pull/275
+[P277]: https://github.com/TD22057/insteon-mqtt/pull/277
+[P279]: https://github.com/TD22057/insteon-mqtt/pull/279
+[P282]: https://github.com/TD22057/insteon-mqtt/pull/282
+[P288]: https://github.com/TD22057/insteon-mqtt/pull/288
+[P284]: https://github.com/TD22057/insteon-mqtt/pull/284
+[P290]: https://github.com/TD22057/insteon-mqtt/pull/290
+[P238]: https://github.com/TD22057/insteon-mqtt/pull/238
+[I292]: https://github.com/TD22057/insteon-mqtt/issues/292
+[P285]: https://github.com/TD22057/insteon-mqtt/pull/285

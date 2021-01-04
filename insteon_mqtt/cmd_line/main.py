@@ -269,17 +269,6 @@ def parse_args(args):
     sp.set_defaults(func=device.pair)
 
     #---------------------------------------
-    # device.pair command
-    sp = sub.add_parser("refresh", help="Refresh device/modem state and "
-                        "all link database.")
-    sp.add_argument("-f", "--force", action="store_true",
-                    help="Force the device database to be downloaded.")
-    sp.add_argument("-q", "--quiet", action="store_true",
-                    help="Don't print any command results to the screen.")
-    sp.add_argument("address", help="Device address or name.")
-    sp.set_defaults(func=device.refresh)
-
-    #---------------------------------------
     # device.db_add add ctrl/rspdr command
     sp = sub.add_parser("db-add", help="Add the device/modem as the "
                         "controller or responder of another device.  The "
@@ -392,6 +381,39 @@ def parse_args(args):
     sp.add_argument("-q", "--quiet", action="store_true",
                     help="Don't print any command results to the screen.")
     sp.set_defaults(func=announce.sendRequest)
+
+    #---------------------------------------
+    # device.awake
+    # Only works on battery devices
+    sp = sub.add_parser("awake", help="Mark a battery device as being awake."
+                        "Hold the set button on the device until the light "
+                        "blinks to force the device awake for 3 minutes.")
+    sp.add_argument("address", help="Device address or name.")
+    sp.add_argument("-q", "--quiet", action="store_true",
+                    help="Don't print any command results to the screen.")
+    sp.set_defaults(func=device.awake)
+
+    #---------------------------------------
+    # device.get_battery_voltage
+    # Only works on some battery devices
+    sp = sub.add_parser("get-battery-voltage", help="Check the battery "
+                        "voltage.  Will request the value the nex time the "
+                        "device is awake.")
+    sp.add_argument("address", help="Device address or name.")
+    sp.add_argument("-q", "--quiet", action="store_true",
+                    help="Don't print any command results to the screen.")
+    sp.set_defaults(func=device.get_battery_voltage)
+
+    #---------------------------------------
+    # device.set_low_battery_voltage
+    # Only works on some battery devices, notably those with removable batts
+    sp = sub.add_parser("set-low-battery-voltage", help="Sets the threshold "
+                        "voltage at which a battery will be signaled as low.")
+    sp.add_argument("address", help="Device address or name.")
+    sp.add_argument("voltage", type=float, help="Low voltage as float.")
+    sp.add_argument("-q", "--quiet", action="store_true",
+                    help="Don't print any command results to the screen.")
+    sp.set_defaults(func=device.set_low_battery_voltage)
 
     return p.parse_args(args)
 
