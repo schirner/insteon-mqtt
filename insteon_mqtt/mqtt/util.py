@@ -86,7 +86,9 @@ def announce_entity_device(link, discover_topic, ha_class, mqttObj, payload, suf
         payload['device']['model'] = mqttObj.device.db.desc.model + ": " + mqttObj.device.db.desc.description
 
     # send it off via mqtt 
-    link.publish(topic,json.dumps(payload))
+    # NOTE discovery message is persistent in broker, so if HASS restarts
+    # it will get the same config again
+    link.publish(topic,json.dumps(payload),retain=True)
 
     return 
 #===========================================================================

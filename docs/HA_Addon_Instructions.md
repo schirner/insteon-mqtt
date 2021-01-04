@@ -62,28 +62,15 @@ These instructions assume that you:
 ## Home Assistant Device Discovery
 
 Devices in the config.yaml can be automatically announced to Home Assistant using 
-   [MQTT discovery](https://www.home-assistant.io/docs/mqtt/discovery/).
+[MQTT discovery](https://www.home-assistant.io/docs/mqtt/discovery/).
 To enable device discovery edit config.yaml and enable ```discover_topic``` 
 and ```announce_topic```. 
 
-Device presence is announced when insteon-mqtt registers to the broker.
-However, devices become grayed out after Home Assistant restart.
-This indicates cached configuration of a discovered devices/entities
-as it has not received the discovery information since restart. 
-To have insteon-mqtt announce the devices/enties again after HA starts, create an automation 
-within home assistant (e.g. in automation.yaml) such as: 
-
-~~~
-- alias: on startup, request auto discovery info from insteon-mqtt 
-  trigger:
-    platform: homeassistant
-    event: start
-  action:
-    service: mqtt.publish
-    data: 
-      topic: 'insteon/announce'
-      payload: "{\"cmd\":\"register\"}"
-~~~
+Device presence is announced when insteon-mqtt registers to the MQTT broker. 
+The discovery messages are persistent in the MQTT broker. Hence, if Home Assistant restarts
+the MQTT broker will announce the devices again once Home Assistant subscribes to the broker. 
+In case the MQTT broker restarts, insteon-mqtt will send the presence 
+announcements again once it re-registered to the MQTT broker. 
 
 Sending discovery information can also be controlled from the command line. 
 For this check out: 
