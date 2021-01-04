@@ -82,7 +82,7 @@ def announce_entity_device(link, discover_topic, ha_class, mqttObj, payload, suf
     # conditionally add info from the DB if present 
     if mqttObj.device.db.firmware:
         payload['device']['sw_version'] = mqttObj.device.db.firmware
-    if mqttObj.device.db.desc.model and mqttObj.device.db.desc.description:
+    if mqttObj.device.db.desc and mqttObj.device.db.desc.model and mqttObj.device.db.desc.description:
         payload['device']['model'] = mqttObj.device.db.desc.model + ": " + mqttObj.device.db.desc.description
 
     # send it off via mqtt 
