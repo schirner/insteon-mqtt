@@ -128,13 +128,15 @@ class Dimmer:
         """
         # prep specific payload for dimmer
         payload = {
-            'cmd_t': self.msg_level.render_topic(self.template_data()), # command topic, use level for dimming
-            'stat_t': self.msg_state.render_topic(self.template_data()), # state topic
+            # command topic, use level for dimming
+            'cmd_t': self.msg_level.render_topic(self.template_data()), 
+            # state topic
+            'stat_t': self.msg_state.render_topic(self.template_data()), 
             'brightness': 'true',       # can dim
             'schema': 'json',         # JSON payload 
         }
         # use util function to complete and send the discovery message
-        util.announce_entity_device(link, discover_topic, 'light', self, payload, '')    
+        util.announce_entity_device(link, discover_topic, 'light', self, payload, '')
 
     #-----------------------------------------------------------------------
     # pylint: disable=arguments-differ
