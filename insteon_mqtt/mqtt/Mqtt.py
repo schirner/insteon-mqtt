@@ -175,11 +175,15 @@ class Mqtt:
 
         # let each device announce itself (if its class has an announce method)
         for device in self.devices.values():
-            try:
+            # check if the device implements announce
+            announce_op = getattr(device, "announce", None)
+            if announce_op and callable(announce_op):
+                # call the device's announce
                 device.announce(self.link, self._discover_topic)
                 nOK = nOK + 1
-            except AttributeError:
+            else:
                 # no need to do anything if announce is not implemented
+                # This is normal for e.g. the modem as it will not be announced to HA.
                 # just skip
                 nNOK = nNOK + 1
 
