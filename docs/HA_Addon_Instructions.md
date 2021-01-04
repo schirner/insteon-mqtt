@@ -59,6 +59,43 @@ These instructions assume that you:
     type.
 13. See the [command documentation](mqtt.md) for additional commands.
 
+## Home Assistant Device Discovery
+
+Devices in the config.yaml can be automatically announced to Home Assistant using 
+   [MQTT discovery](https://www.home-assistant.io/docs/mqtt/discovery/).
+To enable device discovery edit config.yaml and enable ```discover_topic``` 
+and ```announce_topic```. 
+
+Device presence is announced when insteon-mqtt registers to the broker.
+However, devices become grayed out after Home Assistant restart.
+This indicates cached configuration of a discovered devices/entities
+as it has not received the discovery information since restart. 
+To have insteon-mqtt announce the devices/enties again after HA starts, create an automation 
+within home assistant (e.g. in automation.yaml) such as: 
+
+~~~
+- alias: on startup, request auto discovery info from insteon-mqtt 
+  trigger:
+    platform: homeassistant
+    event: start
+  action:
+    service: mqtt.publish
+    data: 
+      topic: 'insteon/announce'
+      payload: "{\"cmd\":\"register\"}"
+~~~
+
+Sending discovery information can also be controlled from the command line. 
+For this check out: 
+
+~~~
+> insteon-mqtt config.yaml discovery {register,unregister,flush}
+~~~
+
+Where *register* sends device discovery information, *unregister* (not yet implemented at device 
+level) sends empty discovery information to delete the discovered devices, 
+and *flush* performs unregister and register. 
+
 ## Backing up your Data
 
 The default settings in the config.yaml file will save all user data to the
