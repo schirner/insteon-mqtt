@@ -179,7 +179,9 @@ mqtt:
   # if discover_topic is defined, devices (as defined in this config.yaml)
   # announce themselves to Home Assisstant. Announcing occurs once 
   # upon startup of insteon-mqtt and based on request (see announce_topic)
-  #discover_topic: 'homeassistant'
+  #discover_topic: 'homeassistant'  
+  # should be renamed to:
+  #discovery_topic_base: 'homeassistant'
 
   # Home Assistant can use this topic to request discovery announcements
   # Payload:     { 'cmd' : 'register|unregister|flush'}
@@ -190,6 +192,27 @@ mqtt:
   # 
   #announce_topic: 'insteon/announce'
 
+  # Home Assisant discovery allows passing device information 
+  # The format is common for all device types. This template  
+  # can be referenced in the payload for each device type. 
+  # Available variables for
+  # templating are:
+  #  model:      model number and description 
+  #  sw_version: firmware version number of device 
+  # e.g. 
+  #  model:      2477D: SwitchLinc Dimmer (Dual-Band)
+  #  sw_version: 69
+  discovery_device_info: '"device": {
+    "name": "{{Name}}", 
+    "manufacturer": "Insteon", 
+    "identifiers": "{{address}}"
+    {% if sw_version is defined %}
+             , "sw_version" : {{sw_version}}
+    {% endif %}
+    {% if model is defined %}
+             , "model" : {{model}}
+    {% endif %}
+    }'
     
   # Trigger modem virtual scenes.  Modem scenes are where the modem is a
   # controller and emits a scene broadcast with the specified group number.
@@ -281,6 +304,15 @@ mqtt:
     # those for the on_off topic and payload.
     scene_topic: 'insteon/{{address}}/scene'
     scene_payload: '{ "cmd" : "{{value.lower()}}" }'
+
+    discovery_topic: '{{discovery_topic_base}}/switch/{{name}}/config'
+    discovery_payload: '{
+      "name":"{{Name}}",
+      "unique_id": "inst_{{address}}",
+      "cmd_t": "{{on_off_topic}}",
+      "stat_t": "{{state_topic}}",
+      {{discovery_device_info}}
+    }'
 
   #------------------------------------------------------------------------
   # Dimmers
@@ -379,6 +411,16 @@ mqtt:
     scene_topic: 'insteon/{{address}}/scene'
     scene_payload: '{ "cmd" : "{{value.lower()}}" }'
 
+    discovery_topic: '{{discovery_topic_base}}/light/{{name}}/config'
+    discovery_payload: '{
+      "name":"{{Name}}",
+      "unique_id": "inst_{{address}}",
+      "cmd_t": "{{on_off_topic}}",
+      "stat_t": "{{state_topic}}",
+      "brightness": "true", 
+      "schema": "json",
+      {{discovery_device_info}}
+    }'    
   #------------------------------------------------------------------------
   # Battery powered sensors
   #    door sensors, hidden door sensors, window sensors
@@ -425,6 +467,27 @@ mqtt:
     heartbeat_topic: 'insteon/{{address}}/heartbeat'
     heartbeat_payload: '{{heartbeat_time}}'
 
+    # motion (or open/close) sensor
+    discovery_topic: '{{discovery_topic_base}}/binary_sensor/{{name}}/config'
+    discovery_payload: '{
+      "name":"{{Name}}",
+      "unique_id": "inst_{{address}}",
+      "stat_t": "{{state_topic}}",
+      "device_class": "motion",
+      {{discovery_device_info}}
+    }'  
+
+    # battery info
+    discovery_low_battery_topic: '{{discovery_topic_base}}/binary_sensor/{{name}}_battery/config'
+    discovery_low_battery_payload: '{
+      "name":"{{Name}}_battery",
+      "unique_id": "inst_{{address}}_battery",
+      "stat_t": "{{state_topic}}",
+      "device_class": "battery",
+      {{discovery_device_info}}
+    }'  
+
+
   #------------------------------------------------------------------------
   # Motion sensors
   #------------------------------------------------------------------------
@@ -453,6 +516,16 @@ mqtt:
     dawn_dusk_topic: 'insteon/{{address}}/dawn'
     dawn_dusk_payload: '{{is_dawn_str.upper()}}'
 
+    # motion (or open/close) sensor
+    discovery_dawn_dusk_topic: '{{discovery_topic_base}}/binary_sensor/{{name}}_dawn/config'
+    discovery_dawn_dusk_payload: '{
+      "name":"{{Name}}_dawn",
+      "unique_id": "inst_{{address}}_dawn",
+      "stat_t": "{{dawn_dusk_topic}}",
+      "device_class": "light",
+      {{discovery_device_info}}
+    }'  
+    
   #------------------------------------------------------------------------
   # Leak sensors
   #------------------------------------------------------------------------
@@ -864,6 +937,28 @@ mqtt:
     # those for the btn_on_off topic and payload.
     btn_scene_topic: 'insteon/{{address}}/scene/{{button}}'
     btn_scene_payload: '{ "cmd" : "{{value.lower()}}" }'
+
+    # discovery definition for Keypad main load
+    discovery_topic: '{{discovery_topic_base}}/light/{{name}}/config'
+    discovery_payload: '{
+      "name":"{{Name}}",
+      "unique_id": "inst_{{address}}",
+      "cmd_t": "{{dimmer_level_topic}}",
+      "stat_t": "{{state_topic}}",
+      "brightness": "{{dimmable}}", 
+      "schema": "json",
+      {{discovery_device_info}}
+    }'  
+
+    # discovery definition for each button
+    discovery_btn_topic: '{{discovery_topic_base}}/switch/{{name}}_{{button}}/config'
+    discovery_btn_payload: '{
+      "name":"{{Name}}_{{button}}",
+      "unique_id": "inst_{{address}}_{{button}}",
+      "cmd_t": "{{btn_on_off_topic}}",
+      "stat_t": "{{btn_state_topic}}",
+      {{discovery_device_info}}
+    }'  
 
   #------------------------------------------------------------------------
   # IO Linc relay controllers
