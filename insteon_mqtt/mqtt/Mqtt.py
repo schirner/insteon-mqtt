@@ -114,6 +114,9 @@ class Mqtt:
         if self._announce_topic: 
             self._announce_topic = MsgTemplate.clean_topic(self._announce_topic)
 
+        # template for device info 
+        self._discovery_device_info = data.get('discovery_device_info', None)
+
         # MQTT message parameters.
         self.qos = data.get('qos', self.qos)
         self.retain = data.get('retain', self.retain)
@@ -124,6 +127,37 @@ class Mqtt:
         # Subscribe to the new topics.
         if self.link.connected:
             self._subscribe()
+
+
+    def load_discovery_templates(self,data,discList):
+        """Extracts the discovery templates from config and returns 
+        them in a hash. Called by the devices.
+        Args:
+            data (dict):  sub tree of config data from config.yaml for this device
+            discList (array): list of qualifiers to extract
+        Returns: 
+            dict <qualifier> = (<topic_template>,<payload_template>)
+        """
+        # start with emtpy template hash
+        discHash = {}
+
+        # for each discovery qualifier (string) 
+        for qual in discList:
+            # the main entry has an emtpy qualifier, for all 
+            # others add trailing _
+            qual_ext = qual
+            if qual != "":
+                qual_ext = qual + "_"
+            topic_key   = "discovery_{q}topic".format(q=qual_ext)
+            payload_key = "discovery_{q}payload".format(q=qual_ext)
+
+            # only add if both topic and payload definition exists in config
+            if topic_key in data and payload_key in data:
+                # add tuple to has with (<topic template>, <payload template>)
+                discHash[qual] = (data[topic_key],data[payload_key])
+
+        return discHash
+
 
     #-----------------------------------------------------------------------
     def publish(self, topic, payload, qos=None, retain=None):
@@ -169,45 +203,98 @@ class Mqtt:
     def announce(self):
         """Announce discovery message to Home Assistant"""
         
-        LOG.ui("Sending discovery announcements.")
-        nOK = 0
-        nNOK = 0
+        if self._discover_topic:
+            LOG.ui("Sending discovery announcements.")
+            nOK = 0
+            nNOK = 0
 
-        # let each device announce itself (if its class has an announce method)
-        for device in self.devices.values():
-            # check if the device implements announce
-            announce_op = getattr(device, "announce", None)
-            if announce_op and callable(announce_op):
-                # call the device's announce
-                device.announce(self.link, self._discover_topic)
-                nOK = nOK + 1
-            else:
-                # no need to do anything if announce is not implemented
-                # This is normal for e.g. the modem as it will not be announced to HA.
-                # just skip
-                nNOK = nNOK + 1
+            # let each device announce itself (if its class has an announce method)
+            for device in self.devices.values():
+                # check if the device implements announce
+                announce_op = getattr(device, "announce", None)
+                if announce_op and callable(announce_op):
+                    # call the device's announce
+                    device.announce(self.link, self._discover_topic)
+                    nOK = nOK + 1
+                else:
+                    # no need to do anything if announce is not implemented
+                    # This is normal for e.g. the modem as it will not be announced to HA.
+                    # just skip
+                    nNOK = nNOK + 1
 
-        LOG.ui("Send announcements for %d device (%d skipped since not implemented)", nOK, nNOK)
+            LOG.ui("Send announcements for %d device (%d skipped since not implemented)", nOK, nNOK)
+        else:
+            # Send info since user might invoke on command line and expect output.
+            LOG.ui("Discovery announcements disabled. discover_topic not defined in config.yaml.")
 
     def unannounce(self):
         """Announce empty discovery messages to Home Assistant"""
         
-        LOG.ui("Sending empty discovery announcements to delete.")
-        nOK = 0
-        nNOK = 0
+        if self._discover_topic:
+            LOG.ui("Sending empty discovery announcements to delete.")
+            nOK = 0
+            nNOK = 0
 
-        # let each device announce itself (if its class has an announce method)
-        for device in self.devices.values():
-            try:
-                device.unannounce(self.link, self._discover_topic)
-                nOK = nOK + 1
-            except AttributeError:
-                # no need to do anything if announce is not implemented
-                # just skip
-                nNOK = nNOK + 1
+            # let each device announce itself (if its class has an announce method)
+            for device in self.devices.values():
+                try:
+                    device.unannounce(self.link, self._discover_topic)
+                    nOK = nOK + 1
+                except AttributeError:
+                    # no need to do anything if announce is not implemented
+                    # just skip
+                    nNOK = nNOK + 1
 
-        LOG.ui("Send empty announcements for %d devices (%d skipped since not implemented)", nOK, nNOK)
+            LOG.ui("Send empty announcements for %d devices (%d skipped since not implemented)", nOK, nNOK)
+        else:
+            # Send info since user might invoke on command line and expect output.
+            LOG.ui("Discovery announcements disabled. discover_topic not defined in config.yaml.")
 
+    def announce_entity_device_template(self, device, discList, discovery_templates, data):
+        """Announce each entity in discList based on discovery_templates and data"""
+        # This is called from each device with config to announce
+
+        # Home Assiaten MQTT discovery 
+        # see: https://www.home-assistant.io/docs/mqtt/discovery/
+        
+        # augment the template data with common definitions 
+        #   (unless overwritten by inputs even though I would not know why we'd need it)
+
+        # set base for announcement topic 
+        if not 'discovery_topic_base' in data:
+            data['discovery_topic_base'] = self._discover_topic
+
+        # augment  template data with device specific info
+
+        # Name with captialization for auto discovery
+        data["Name"] = device.name_caps if device.name_caps else device.addr.hex
+
+        # conditionally add info from the DB if present 
+        if device.db.firmware:
+            data['sw_version'] = device.db.firmware
+        if device.db.desc and device.db.desc.model and device.db.desc.description:
+            data['model'] = device.db.desc.model + ": " + device.db.desc.description
+
+        # manufacturer is hard coded (we probably exclude X10 devices here)
+        data['manufacturer'] = 'Insteon'
+
+
+        # templates are not recursively resolved. Since we know that 
+        # 'discovery_device_info' by itself is a template, render it first
+        if not 'discovery_device_info' in data:
+            # lets use the MsgTemplate for rendering
+            devInfo = MsgTemplate(topic=None,payload=self._discovery_device_info)
+            data['discovery_device_info'] = devInfo.render_payload(data)
+
+        # for each discovery template defined
+        for qual in discList:
+            # lookup topic and payload templates
+            (discTopic, discPayload) = discovery_templates[qual]
+            msg = MsgTemplate(topic=discTopic,payload=discPayload)
+            # render template and publish 
+            msg.publish(self,data,retain=True)
+
+        return 
 
     #-----------------------------------------------------------------------
     def handle_new_device(self, modem, device):

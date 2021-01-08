@@ -56,6 +56,11 @@ class Dimmer:
             topic='insteon/{{address}}/scene',
             payload='{ "cmd" : "{{value.lower()}}" }')
 
+        # what discovery templates to load? List of qualifiers 
+        # each qualifier will lead to discovery_<qual>_topic, discovery_<qual>_payload
+        # pair (no _ for empty qualifier, resulting in discovery_topic, discovery_payload)
+        self.discList = ['']
+
         # Connect the signals from the insteon device so we get notified of
         # changes.
         device.signal_level_changed.connect(self._insteon_level_changed)
@@ -82,6 +87,10 @@ class Dimmer:
                                     qos)
         self.msg_level.load_config(data, 'level_topic', 'level_payload', qos)
         self.msg_scene.load_config(data, 'scene_topic', 'scene_payload', qos)
+
+        # load templates for announcing devices
+        # returns a hash
+        self.discovery_templates = self.mqtt.load_discovery_templates(data,self.discList) 
 
     #-----------------------------------------------------------------------
     def subscribe(self, link, qos):
@@ -126,17 +135,18 @@ class Dimmer:
     def announce(self, link, discover_topic):
         """Announce own presence for device discovery in home assistant mqtt
         """
-        # prep specific payload for dimmer
-        payload = {
-            # command topic, use level for dimming
-            'cmd_t': self.msg_level.render_topic(self.template_data()), 
-            # state topic
-            'stat_t': self.msg_state.render_topic(self.template_data()), 
-            'brightness': 'true',       # can dim
-            'schema': 'json',         # JSON payload 
-        }
-        # use util function to complete and send the discovery message
-        util.announce_entity_device(link, discover_topic, 'light', self, payload, '')
+        # add device's topics to template data for jinja resolving
+        data = self.template_data()
+        data['state_topic'] = self.msg_state.render_topic(data)
+        data['manual_state_topic'] = self.msg_manual_state.render_topic(data)
+        data['on_off_topic'] = self.msg_on_off.render_topic(data)
+        data['level_topic']  = self.msg_level.render_topic(data)
+        data['scene_topic']  = self.msg_level.render_topic(data)
+
+        # render all discoveries referred to in discList 
+        # rendered according to templates and data, 
+        # and send presence announcement
+        self.mqtt.announce_entity_device_template(self.device,self.discList,self.discovery_templates,data)
 
     #-----------------------------------------------------------------------
     # pylint: disable=arguments-differ

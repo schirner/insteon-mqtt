@@ -179,9 +179,9 @@ mqtt:
   # if discover_topic is defined, devices (as defined in this config.yaml)
   # announce themselves to Home Assisstant. Announcing occurs once 
   # upon startup of insteon-mqtt and based on request (see announce_topic)
-  #discover_topic: 'homeassistant'  
+  # discover_topic: 'homeassistant'  
   # should be renamed to:
-  #discovery_topic_base: 'homeassistant'
+  # discovery_topic_base: 'homeassistant'
 
   # Home Assistant can use this topic to request discovery announcements
   # Payload:     { 'cmd' : 'register|unregister|flush'}
@@ -415,7 +415,7 @@ mqtt:
     discovery_payload: '{
       "name":"{{Name}}",
       "unique_id": "inst_{{address}}",
-      "cmd_t": "{{on_off_topic}}",
+      "cmd_t": "{{level_topic}}",
       "stat_t": "{{state_topic}}",
       "brightness": "true", 
       "schema": "json",
